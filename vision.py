@@ -1,46 +1,45 @@
 import cv2
 import numpy as np
+import pytesseract
 
-def analyze_chart(image_bytes):
+# ------------------------------
+# Convert Y position to price
+# ------------------------------
+def y_to_price(y, y1, p1, y2, p2):
+    if y2 == y1:
+        return None
+    ratio = (y - y1) / (y2 - y1)
+    return p1 + ratio * (p2 - p1)
+
+# ------------------------------
+# Simple OCR reader
+# ------------------------------
+def try_ocr_read(img):
     try:
-        # Convert image bytes → OpenCV array
-        nparr = np.frombuffer(image_bytes, np.uint8)
-        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-
-        if img is None:
-            return "❌ Unable to read the image. Please upload a clear chart."
-
-        height, width, _ = img.shape
-
-        # -----------------------------
-        # BASIC CHART ANALYSIS (DEMO)
-        # -----------------------------
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        blur = cv2.GaussianBlur(gray, (5, 5), 0)
-        edges = cv2.Canny(blur, 50, 150)
+        blur = cv2.GaussianBlur(gray, (3, 3), 0)
+        text = pytesseract.image_to_string(blur)
+        return text.strip()
+    except:
+        return ""
 
-        # Count edge density (structure detection)
-        density = np.sum(edges == 255)
+# ------------------------------
+# BASIC OB / FVG DETECTORS
+# ------------------------------
+def detect_ob_fvg(img):
+    h, w, _ = img.shape
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-        # Fake smart-money signals (demo before adding real AI)
-        ob_detected = density % 2 == 0
-        fvg_detected = density % 3 == 0
-        bos_detected = density % 5 == 0
-        choch_detected = density % 7 == 0
+    blur = cv2.GaussianBlur(gray, (5, 5), 0)
+    edges = cv2.Canny(blur, 60, 140)
 
-        result = "📊 **Smart Money Report**\n\n"
+    edge_density = np.sum(edges == 255)
 
-        if ob_detected: result += "🟦 Order Block found\n"
-        if fvg_detected: result += "🟨 Fair Value Gap detected\n"
-        if bos_detected: result += "📈 Break of Structure confirmed\n"
-        if choch_detected: result += "🔄 CHoCH detected\n"
+    order_block = edge_density % 2 == 0
+    fair_value_gap = edge_density % 3 == 0
 
-        if not any([ob_detected, fvg_detected, bos_detected, choch_detected]):
-            result += "No strong signals found."
-
-        result += "\n\n(Soon: real AI pattern training)"
-
-        return result
-
-    except Exception as e:
-        return f"❌ Error analyzing chart: {str(e)}"
+    return {
+        "ob": order_block,
+        "fvg": fair_value_gap,
+        "density": int(edge_density)
+    }
